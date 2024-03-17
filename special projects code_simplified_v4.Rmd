@@ -1,0 +1,504 @@
+---
+title: "special projects code_simplified"
+author: "Yui Kan Kong"
+date: "2023-11-01"
+geometry: margin= .5cm
+output:
+  pdf_document: default
+  word_document: default
+---
+```{r}
+# Install and load dplyr if you haven't
+# install.packages("dplyr")
+# Load necessary packages
+library(dplyr)
+library(tidyr)
+library(lmtest)
+```
+
+## Load the data
+and we also test is there correlation of in state and out state tuition,and the testing result suggest they ahve strong correlation so we do not incldue both of them in regression.
+
+
+```{r}
+# Load datasets
+data2012 <- read.csv("/Users/anson/Documents/NYU/Special Project/final model/2012.csv")
+data2016 <- read.csv("/Users/anson/Documents/NYU/Special Project/final model/2016.csv")
+data2020 <- read.csv("/Users/anson/Documents/NYU/Special Project/final model/2020.csv")
+data2021 <- read.csv("/Users/anson/Documents/NYU/Special Project/final model/2021.csv")
+# Add a dummy variable for each dataset
+# Add different dummy variables for each dataset
+data2012$year2012 <- 1
+data2012$year2016 <- 0
+data2012$year2020 <- 0
+data2012$year2021 <- 0
+
+data2016$year2012 <- 0
+data2016$year2016 <- 1
+data2016$year2020 <- 0
+data2016$year2021 <- 0
+
+data2020$year2012 <- 0
+data2020$year2016 <- 0
+data2020$year2020 <- 1
+data2020$year2021 <- 0
+
+data2021$year2012 <- 0
+data2021$year2016 <- 0
+data2021$year2020 <- 0
+data2021$year2021 <- 1
+
+# Merge datasets vertically
+library(dplyr)
+
+# Convert the 'COUNTY' column to character for all data frames
+data2012$COUNTY <- as.character(data2012$COUNTY)
+data2016$COUNTY <- as.character(data2016$COUNTY)
+data2020$COUNTY <- as.character(data2020$COUNTY)
+data2021$COUNTY <- as.character(data2021$COUNTY)
+
+merged_data <- bind_rows(data2012, data2020, data2021)
+# Print column names
+# print(colnames(merged_data))
+# Calculate the correlation between x and y
+correlation <- cor(merged_data$TUITIONFEE_IN, merged_data$TUITIONFEE_OUT, use = "complete.obs")
+print(correlation)
+```
+
+#SAT -> ACT
+Also SAT and ACT have strong correlation by setting, and not every school have both variable , we combine both of them to avoid any issue. And we perform some test to make sure the joining make sense, as we can see in the later code, it is more likely to have higher ACT score compare to SAT score, so for our purpose, we always take the higher value. And for scalling purpose, we take the closest value in the transaltion table.
+
+```{r}
+# Define ACT to SAT conversion table
+# Create a data frame with equal-length vectors
+all_SAT <- c(1600, 1590, 1580, 1570, 1560, 1550, 1540, 1530, 1520, 1510, 1500, 1490, 1480, 1470, 1460, 1450, 1440, 1430, 1420, 1410, 1400, 1390, 1380, 1370, 1360, 1350, 1340, 1330, 1320, 1310, 1300, 1290, 1280, 1270, 
+            1260, 1250, 1240, 1230, 1220, 1210, 1200, 1190, 1180, 1170, 1160, 1150, 1140, 1130, 1120, 1110, 1100, 1090, 1080, 1070, 1060, 1050, 1040, 1030, 1020, 1010, 1000, 990, 980, 970, 960, 950, 940, 930,
+            920, 910, 900, 890, 880, 870, 860, 850, 840, 830, 820, 810, 800, 790, 780, 770, 760, 750, 740, 730, 720, 710, 700, 690, 680, 670, 660, 650, 640, 630, 620, 610, 600, 590)
+
+all_ACT <- c(36, 36, 36, 36, 35, 35, 35, 35, 34, 34, 34, 34, 33, 33, 33, 33, 32, 32, 32, 31, 31, 31, 30, 30, 30, 29, 29, 29, 28, 28, 28, 27, 27, 27,
+             27, 26, 26, 26, 25, 25, 25, 24, 24, 24, 24, 23, 23, 23, 22, 22, 22, 21, 21, 21, 21, 20, 20, 20, 19, 19, 19, 19, 18, 18, 18, 17, 17, 17,
+             17, 16, 16, 16, 16, 15, 15, 15, 15, 14, 14, 14, 14, 14, 13, 13, 13, 13, 13, 12, 12, 12, 12, 11, 11, 11, 11, 11, 10, 10, 10, 9, 9, 9)
+
+act_to_sat_conversion <- data.frame(
+  SAT = all_SAT,
+  ACT = all_ACT
+)
+
+# Load your data (replace this with your actual data)
+# my_data <- read.csv("your_file.csv")
+
+# Function to check if SAT and ACT scores match
+# Function to check if SAT and ACT scores are close matches
+check_closest_scores_match <- function(sat_score, act_score) {
+  closest_sat <- act_to_sat_conversion$SAT[which.min(abs(act_to_sat_conversion$ACT - act_score))]
+  return(closest_sat)
+}
+
+# Remove rows with NULL or NA values in either SAT_AVG or ACTCMMID
+filtered_data <- merged_data[complete.cases(merged_data$SAT_AVG, merged_data$ACTCMMID),]
+
+# Apply the function to the filtered data
+filtered_data$closest_match <- mapply(check_closest_scores_match, filtered_data$SAT_AVG, filtered_data$ACTCMMID)
+
+# Find rows where the calculated closest SAT and ACT don't match the given SAT score
+non_matching_rows <- filtered_data[filtered_data$closest_match != filtered_data$SAT_AVG, ]
+
+# Show the number of rows that don't match
+print(paste("Number of rows not matching: ", nrow(non_matching_rows)))
+# Count rows where the calculated closest SAT and ACT match the given SAT score
+matching_rows <- filtered_data[filtered_data$closest_match == filtered_data$SAT_AVG, ]
+
+# Show the number of rows that match
+print(paste("Number of rows matching: ", nrow(matching_rows)))
+
+# Find the number of rows where ACT > closest SAT
+act_greater_than_sat <- nrow(filtered_data[filtered_data$closest_match < filtered_data$SAT_AVG,])
+print(paste("Number of rows where actual SAT is greater than closest SAT: ", act_greater_than_sat))
+
+# Find the number of rows where closest SAT > ACT
+sat_greater_than_act <- nrow(filtered_data[filtered_data$closest_match > filtered_data$SAT_AVG,])
+print(paste("Number of rows where closest SAT is greater than actual SAT: ", sat_greater_than_act))
+
+# ... (your code for defining the act_to_sat_conversion data frame remains the same)
+
+# Function to translate SAT to closest ACT
+translate_sat_to_act <- function(sat_score) {
+  closest_act <- act_to_sat_conversion$ACT[which.min(abs(act_to_sat_conversion$SAT - sat_score))]
+  return(closest_act)
+}
+
+# Remove rows with NULL or NA values in either SAT_AVG or ACTCMMID
+filtered_data <- merged_data[complete.cases(merged_data$SAT_AVG, merged_data$ACTCMMID),]
+
+# Translate SAT to closest ACT
+filtered_data$translated_ACT <- mapply(translate_sat_to_act, filtered_data$SAT_AVG)
+
+# Pick the larger one between ACT and translated ACT
+filtered_data$final_ACT <- pmax(filtered_data$translated_ACT, filtered_data$ACTCMMID, na.rm = TRUE)
+
+# For rows where ACT is missing, use the translated ACT
+filtered_data$final_ACT[is.na(filtered_data$ACTCMMID)] <- filtered_data$translated_ACT[is.na(filtered_data$ACTCMMID)]
+
+# For rows where SAT is missing, use the ACT
+filtered_data$final_ACT[is.na(filtered_data$SAT_AVG)] <- filtered_data$ACTCMMID[is.na(filtered_data$SAT_AVG)]
+
+# Show the first few rows to verify
+# head(filtered_data)
+
+```
+
+## Create 'other' race & clean up unused data
+The other race, so we take the race that is not white , black ,hispanic and asianm and we select only the data we need and ,ake sure intergrity of our data
+
+```{r}
+# Create an other column for Race
+filtered_data$UGDS_OTHER <- 1 - filtered_data$UGDS_WHITE -filtered_data$UGDS_BLACK - filtered_data$UGDS_HISP - filtered_data$UGDS_ASIAN
+
+# remove data rows with NA in any year (2012, 2020, 2021) column
+# filtered_data <- subset(filtered_data, !is.na(filtered_data$year2012))
+filtered_data <- subset(filtered_data, !is.na(filtered_data$year2020))
+filtered_data <- subset(filtered_data, !is.na(filtered_data$year2021))
+
+# Select only the columns you want to keep
+selected_data <- select(filtered_data, "INSTNM","UNITID","COUNTY", "ADM_RATE","final_ACT","TUITIONFEE_IN","TUITIONFEE_OUT","UGDS","UGDS_WHITE","UGDS_BLACK","UGDS_HISP","UGDS_ASIAN",'UGDS_OTHER',"HIGHDEG","democratic_raw_votes","republican_raw_votes","pres_raw_county_vote_totals_two_party","Population..persons..3.","Per.capita.personal.income.4.","Wage.and.salary.employment","Average.earnings.per.job..dollars.","Personal.income..thousands.of.dollars.","Unemployment.insurance.compensation","Total.employment..number.of.jobs.","year2012","year2020",'year2021')
+
+# create identifier that is UNITID plus COUNTY 
+selected_data$COUNTY[selected_data$COUNTY=="00nan"]<- "00000"
+selected_data$COUNTY <- paste0("0",selected_data$COUNTY)
+selected_data$COUNTY[selected_data$COUNTY=="0NA"]<- "00000"
+selected_data$COUNTY <- substring(selected_data$COUNTY, nchar(selected_data$COUNTY)-5+1, nchar(selected_data$COUNTY))
+
+selected_data$COUNTY <- as.numeric(selected_data$COUNTY)
+selected_data$UNITIDCOUNTY <- paste(selected_data$UNITID, selected_data$COUNTY, sep = "_") 
+
+# Remove previous data frames
+# rm(data1, data2, data3,data4, merged_data)
+
+```
+
+
+# add columns/clean
+create the percentage data we need and dummy variable , also filter out trade school, mising data and not a degree granting school
+```{r}
+
+# Create "% of vote to democratic" column
+selected_data$`% of vote to democratic` <- selected_data$democratic_raw_votes / selected_data$pres_raw_county_vote_totals_two_party
+
+# Create "% of vote to republican" column
+selected_data$vote_to_republican <- selected_data$republican_raw_votes / selected_data$pres_raw_county_vote_totals_two_party
+
+# Create "trade_school" dummy columns based on the "HIGHDEG" column
+selected_data$trade_school <- ifelse(selected_data$HIGHDEG %in% c(0, 1, 2), 1, 0)
+
+# Fill all missing values with 0
+selected_data[is.na(selected_data)] <- 0
+
+#Filter out if total votes is zero in 2020 or 2012
+selected_data$helper <- selected_data$year2021 + selected_data$pres_raw_county_vote_totals_two_party
+selected_data <- selected_data %>% filter(helper !=0)
+
+# Filter out rows where UGDS is 0
+selected_data <- selected_data %>% filter(UGDS != 0)
+
+# Filter out rows where trade school = 1
+selected_data <- selected_data %>% filter(trade_school != 1)
+
+# Print all column names
+# print(colnames(selected_data))
+```
+
+### checking
+making sure we have all the column we need
+
+```{r}
+# Double-check that 'selected_data' contains all necessary columns before running this code.
+# Function to check missing columns
+check_missing_columns <- function(data, expected_columns) {
+  existing_columns <- names(data)
+  missing_columns <- setdiff(expected_columns, existing_columns)
+  if (length(missing_columns) > 0) {
+    cat("Missing columns: ", paste(missing_columns, collapse = ", "), "\n")
+  } else {
+    cat("All expected columns are present.\n")
+  }
+  return(missing_columns)
+}
+
+# Before running the rest of the code, check for missing columns
+expected_columns <- c("UNITID", "UGDS", "final_ACT", "TUITIONFEE_IN", "TUITIONFEE_OUT", "UGDS_WHITE", "UGDS_BLACK", "UGDS_HISP", "UGDS_ASIAN", "UGDS_OTHER","year2012", "year2020", "vote_to_republican", "trade_school","Population..persons..3.","Per.capita.personal.income.4.",  "Average.earnings.per.job..dollars.","Personal.income..thousands.of.dollars.", "Total.employment..number.of.jobs." )
+
+missing_columns <- check_missing_columns(selected_data, expected_columns)
+
+# If there are missing columns, you may want to stop or adapt subsequent code
+if(length(missing_columns) > 0) {
+  stop("Stopping because some expected columns are missing.")
+}
+
+
+# Step 1: Identify common UNITIDs
+# common_2012_2020_2021 <- intersect(intersect(selected_data$UNITID[selected_data$year2012 == 1], 
+                                         #   selected_data$UNITID[selected_data$year2020 == 1]), 
+                               #    selected_data$UNITID[selected_data$year2021 == 1])
+
+
+
+# cat("Number of common UNITIDs between 2012 ,2020 and 2021:", length(common_2012_2020_2021), "\n")
+```
+### Difference and regression
+getting difference of two year and run the regression, since the goal of our regrsession is find how the different of polictical view affect change of enrollment rate, so we have to calculate the different.
+```{r}
+
+# final regression
+
+# Function to get differences between two years
+get_difference <- function(common_ids, year1, year2, keep_columns) {
+  data1 <- subset(selected_data, UNITIDCOUNTY %in% common_ids & selected_data[[year1]] == 1, select = keep_columns)
+  data2 <- subset(selected_data, UNITIDCOUNTY %in% common_ids & selected_data[[year2]] == 1, select = keep_columns)
+  merge_data <- merge(data1, data2, by = "UNITIDCOUNTY", suffixes = c(".x", ".y"))
+  
+  # Calculate the difference for other columns
+  for(col in keep_columns[-1]) {
+    col_x <- paste0(col, '.x')
+    col_y <- paste0(col, '.y')
+    if (col_x %in% names(merge_data) & col_y %in% names(merge_data)) {
+      merge_data[paste0(col, '_diff')] <- merge_data[[col_y]] - merge_data[[col_x]]}
+   
+  # Calculate the % difference in UGDS
+  if ('UGDS.x' %in% names(merge_data) & 'UGDS.y' %in% names(merge_data)) {
+    merge_data$UGDS_diff <- (merge_data$UGDS.y - merge_data$UGDS.x)/merge_data$UGDS.x}
+   
+  
+    }
+  
+  return(merge_data)
+}
+
+# Find common UNITIDs for 2012 and 2021
+common_2012_2021 <- intersect(selected_data$UNITIDCOUNTY[selected_data$year2012 == 1], 
+                           selected_data$UNITIDCOUNTY[selected_data$year2021 == 1])
+
+sum(duplicated(common_2012_2021))
+
+# Find common UNITIDs for 2012 and 2020
+common_2012_2020 <- intersect(selected_data$UNITIDCOUNTY[selected_data$year2012 == 1], 
+                          selected_data$UNITIDCOUNTY[selected_data$year2020 == 1])
+
+#Find common UNITIDs for 2012, 2020, 2021
+common_2012_2020_2021 <- intersect(intersect(selected_data$UNITIDCOUNTY[selected_data$year2012 == 1], 
+                             selected_data$UNITIDCOUNTY[selected_data$year2020 == 1]),
+                             selected_data$UNITIDCOUNTY[selected_data$year2021 == 1])
+
+data_diff_2012_2021 <- get_difference(common_2012_2021, 'year2012', 'year2021', c("UNITIDCOUNTY", "UNITID", "COUNTY","UGDS", "final_ACT", "TUITIONFEE_IN", "UGDS_BLACK", "UGDS_HISP", "UGDS_ASIAN", "UGDS_OTHER", "vote_to_republican","Population..persons..3.","Per.capita.personal.income.4.",  "Average.earnings.per.job..dollars." ,"Personal.income..thousands.of.dollars.", "Total.employment..number.of.jobs.", "Unemployment.insurance.compensation"))
+data_diff_2012_2020 <- get_difference(common_2012_2020, 'year2012', 'year2020', c("UNITIDCOUNTY", "UNITID", "COUNTY","UGDS", "final_ACT", "TUITIONFEE_IN", "UGDS_BLACK", "UGDS_HISP", "UGDS_ASIAN", "UGDS_OTHER", "vote_to_republican","Population..persons..3.","Per.capita.personal.income.4.",  "Average.earnings.per.job..dollars." ,"Personal.income..thousands.of.dollars.", "Total.employment..number.of.jobs.","Unemployment.insurance.compensation"))
+
+# Columns to be used in regression model
+columns_to_use <- c("final_ACT", "TUITIONFEE_IN", "UGDS_BLACK", "UGDS_HISP", "UGDS_ASIAN", "UDGS_OTHER", "vote_to_republican","Population..persons..3."               ,"Per.capita.personal.income.4.",  "Average.earnings.per.job..dollars." ,"Personal.income..thousands.of.dollars.", "Total.employment..number.of.jobs.","Unemployment.insurance.compensation")
+diff_columns <- paste0(columns_to_use, "_diff") # This assumes that the difference columns in data_diff_2012_2020 have "_diff" suffix
+
+# Merge data for 2012-2021 and 2012-2020 based on UNITID
+data_diffs <- merge(data_diff_2012_2021, data_diff_2012_2020, by = "UNITIDCOUNTY", suffixes = c(".2021", ".2020"))
+data_diffs$INST <- filtered_data$INSTNM[match(data_diffs$UNITID.x.2021,filtered_data$UNITID)]
+
+#clean up the final data
+final_data <- data.frame(data_diffs$INST,data_diffs$UNITID.x.2021,data_diffs$UNITIDCOUNTY, data_diffs$COUNTY.x.2021,data_diffs$UGDS.x.2021,data_diffs$UGDS.y.2021,data_diffs$UGDS_diff.2021, data_diffs$final_ACT.x.2020, data_diffs$final_ACT.y.2020, data_diffs$final_ACT_diff.2020,data_diffs$TUITIONFEE_IN.x.2020, data_diffs$TUITIONFEE_IN.y.2020, data_diffs$TUITIONFEE_IN_diff.2020, data_diffs$UGDS_BLACK.x.2020, data_diffs$UGDS_BLACK.y.2020, data_diffs$UGDS_BLACK_diff.2020, data_diffs$UGDS_HISP.x.2020, data_diffs$UGDS_HISP.y.2020, data_diffs$UGDS_HISP_diff.2020, data_diffs$UGDS_ASIAN.x.2020, data_diffs$UGDS_ASIAN.y.2020, data_diffs$UGDS_ASIAN_diff.2020, data_diffs$UGDS_OTHER.x.2020, data_diffs$UGDS_OTHER.y.2020, data_diffs$UGDS_OTHER_diff.2020, data_diffs$vote_to_republican.x.2020, data_diffs$vote_to_republican.y.2020, data_diffs$vote_to_republican_diff.2020, data_diffs$Population..persons..3..x.2020, data_diffs$Population..persons..3..y.2020, data_diffs$Population..persons..3._diff.2020, data_diffs$Per.capita.personal.income.4..x.2020, data_diffs$Per.capita.personal.income.4..y.2020, data_diffs$Per.capita.personal.income.4._diff.2020, data_diffs$Average.earnings.per.job..dollars..x.2020, data_diffs$Average.earnings.per.job..dollars..y.2020, data_diffs$Average.earnings.per.job..dollars._diff.2020, data_diffs$Personal.income..thousands.of.dollars..x.2020, data_diffs$Personal.income..thousands.of.dollars..y.2020, data_diffs$Personal.income..thousands.of.dollars._diff.2020, data_diffs$Total.employment..number.of.jobs..x.2020, data_diffs$Total.employment..number.of.jobs..y.2020, data_diffs$Total.employment..number.of.jobs._diff.2020, data_diffs$Unemployment.insurance.compensation.x.2020, data_diffs$Unemployment.insurance.compensation.y.2020, data_diffs$Unemployment.insurance.compensation_diff.2020)
+
+colnames(final_data) <- c("Institution", "UNITID", "UNITID_County","County", "Undergrads_2012", "Undergrads_2021", "Change_in_Undergrads_2021", "ACT_2012", "ACT_2020", "Change_in_ACT_2020", "Tuition_2012","Tuition_2020", "Change_in_Tuition_2020", "Black_Undergrads_2012","Black_Undergrads_2020","Change_in_Black_Undergrads_2020", "Hispanic_Undergrads_2012", "Hispanic_Undergrads_2020", "Change_in_Hispanic_Undergrads_2020", "Asian_Undergrads_2012", "Asian_Undergrads_2020", "Change_in_Asian_Undergrads_2020", "Other_NonWhite_Undergrads_2012", "Other_NonWhite_Undergrads_2020", "Change_in_Other_NonWhite_Undergrads_2020", "Republican_Votes_2012", "Republican_Votes_2020", "Change_in_Republican_Votes_2020", "County_Population_2012", "County_Population_2020", "Change_in_County_Population_2020", "County_PerCapita_Income_2012", "County_PerCapita_Income_2020", "Change_in_County_PerCapita_Income_2020", "Average_Earnings_per_Job_2012", "Average_Earnings_per_Job_2020", "Change_in_Average_Earnings_per_Job_2020", "Personal_Income_2012", "Personal_Income_2020", "Change_in_Personal_Income_2020","County_Employment_2012", "County_Employment_2020", "Change_in_County_Employment_2020", "Unemployment_Insurance_2012", "Unemployment_Insurance_2020", "Change_in_Unemployment_Insurance_2020")
+
+final_data$State <- merged_data$state[match(final_data$UNITID,merged_data$UNITID)]
+
+# Columns to be used in regression model
+columns_to_use1 <- c("Change_in_ACT_2020", "Change_in_Tuition_2020", "Change_in_Black_Undergrads_2020",  "Change_in_Hispanic_Undergrads_2020", "Change_in_Asian_Undergrads_2020", "Change_in_Other_NonWhite_Undergrads_2020", "Change_in_Republican_Votes_2020", "Change_in_County_Population_2020", "Change_in_County_PerCapita_Income_2020",  "Change_in_Average_Earnings_per_Job_2020",  "Change_in_Personal_Income_2020", "Change_in_County_Employment_2020",  "Change_in_Unemployment_Insurance_2020")
+
+# Generate names for the columns in 2012-2020 data
+#independent_columns <- paste0(columns_to_use, ".2020")
+
+# Run the single regression model
+fit_single1 <- lm(Change_in_Undergrads_2021 ~ ., data = final_data[, c("Change_in_Undergrads_2021", columns_to_use1)])
+
+# Output the summary of the model
+cat("Regression Results with 2012-2021 as dependent and 2012-2020 as independent:\n")
+print(summary(fit_single1))
+
+```
+additional correlation check
+```{r}
+#check for multicollinearity
+correlation_check1 <- data.frame(final_data$Change_in_ACT_2020, final_data$Change_in_Tuition_2020,final_data$Change_in_Black_Undergrads_2020,final_data$Change_in_Hispanic_Undergrads_2020, final_data$Change_in_Asian_Undergrads_2020, final_data$Change_in_Other_NonWhite_Undergrads_2020, final_data$Change_in_Republican_Votes_2020, final_data$Change_in_County_Population_2020, final_data$Change_in_County_PerCapita_Income_2020, final_data$Change_in_Average_Earnings_per_Job_2020, final_data$Change_in_Personal_Income_2020, final_data$Change_in_County_Employment_2020, final_data$Change_in_Unemployment_Insurance_2020)
+
+correlations1 <- cor(as.matrix(correlation_check1))
+correlations1 <- as.data.frame(correlations1)
+correlations1
+
+#regression w/o unemployment insurance based on correlations
+columns_to_use2 <- c("Change_in_ACT_2020", "Tuition_2012","Change_in_Black_Undergrads_2020", "Change_in_Asian_Undergrads_2020", "Change_in_Other_NonWhite_Undergrads_2020", "Change_in_Republican_Votes_2020", "County_PerCapita_Income_2012", "Change_in_County_Employment_2020")
+
+fit_single2 <- lm(Change_in_Undergrads_2021 ~ ., data = final_data[, c("Change_in_Undergrads_2021", columns_to_use2)])
+cat("Regression 2 Results with 2012-2021 as dependent and 2012-2020 as independent:\n")
+print(summary(fit_single2))
+
+```
+### subset data and add column
+as there some extreme value so we drop the schoool with extreme change as they are outlier, the reason being some school close down and rapid expension so we drop them
+```{r}
+#run regression without UDGS_diff >|.75|, without change in republican vote high outlier
+final_data_modified <- subset(final_data, Change_in_Undergrads_2021<.75)
+final_data_modified <- subset(final_data_modified, Change_in_Undergrads_2021>-.75)
+final_data_modified <- subset(final_data_modified, Change_in_Republican_Votes_2020<.2)
+
+#add manufacturing to data/regression
+manufacturing <- read.csv("/Users/anson/Documents/NYU/Special Project/final model/Manufacturing.csv")
+final_data_modified$Manufacturing_2001 <- manufacturing$X2001[match(final_data_modified$County,manufacturing$County)]
+final_data_modified$Manufacturing_2020 <- manufacturing$X2020[match(final_data_modified$County,manufacturing$County)]
+final_data_modified$Change_in_Manufacturing_2020 <- manufacturing$X2020.2001[match(final_data_modified$County,manufacturing$County)]
+final_data_modified$Manufacturing_2001 = as.numeric(as.character(final_data_modified$Manufacturing_2001))
+final_data_modified$Manufacturing_2020 = as.numeric(as.character(final_data_modified$Manufacturing_2020))
+final_data_modified$Change_in_Manufacturing_2020 = as.numeric(as.character(final_data_modified$Change_in_Manufacturing_2020))
+final_data_modified[is.na(final_data_modified)] <- 0
+
+#final_data_modified$PerCapita_Manufacturing_2001 <- final_data_modified$Manufacturing_2001/final_data_modified$County_Population_2012
+#final_data_modified$PerCapita_Manufacturing_2020 <- final_data_modified$Manufacturing_2020/final_data_modified$County_Population_2020
+#final_data_modified$Change_in_PerCapita_Manufacturing <- final_data_modified$PerCapita_Manufacturing_2020 - final_data_modified$PerCapita_Manufacturing_2001
+
+#final_data_modified$Change_in_PerCapita_Manufacturing = as.numeric(as.character(final_data_modified$Change_in_PerCapita_Manufacturing))
+#final_data_modified[is.na(final_data_modified)] <- 0
+
+
+columns_to_use3 <- c("Change_in_ACT_2020", "Tuition_2012","Change_in_Black_Undergrads_2020", "Change_in_Asian_Undergrads_2020", "Change_in_Other_NonWhite_Undergrads_2020", "Change_in_Republican_Votes_2020", "County_PerCapita_Income_2012", "Change_in_County_Employment_2020")
+
+fit_single3 <- lm(Change_in_Undergrads_2021 ~ ., data = final_data_modified[, c("Change_in_Undergrads_2021", columns_to_use3)])
+cat("Oprtimal Regression Results with 2012-2021 as dependent and 2012 or 2012-2020 as independent:\n")
+print(summary(fit_single3))
+
+
+correlation1 <- cor(final_data_modified$County_PerCapita_Income_2012, final_data_modified$Manufacturing_2001)
+print(correlation1)
+
+correlation_check3 <- data.frame(final_data_modified$Change_in_ACT_2020, final_data_modified$Tuition_2012,final_data_modified$Change_in_Black_Undergrads_2020,  final_data_modified$Change_in_Asian_Undergrads_2020, final_data_modified$Change_in_Other_NonWhite_Undergrads_2020, final_data_modified$Change_in_Republican_Votes_2020,  final_data_modified$County_PerCapita_Income_2012,    final_data_modified$Change_in_County_Employment_2020)
+
+correlations3 <- cor(as.matrix(correlation_check3))
+correlations3 <- as.data.frame(correlations3)
+correlations3
+
+#install.packages("gridExtra")
+library(gridExtra)
+colnames(correlations3) <- c("Change in ACT","Tuition", "Change in Black Undergrads", "Change in Asian Undergrads", "Change in Other NonWhite Undergrads", "Change in Republican Votes", "Per-Capita Income", "Change in Employment")
+rownames(correlations3) <- c("Change in ACT","Tuition", "Change in Black Undergrads", "Change in Asian Undergrads", "Change in Other NonWhite Undergrads", "Change in Republican Votes", "Per-Capita Income", "Change in Employment")
+
+
+#rownames() <- c("$\\beta_0$", "$\\beta_1$")
+#colnames(d)[4] <- "$P(T > |t|)$"
+#knitr::kable(correlations3, digits=2)
+
+
+#install.packages("tableHTML")
+#library(tableHTML)
+#tableHTML(correlations3, round=2, widths=rep(50,9), )
+
+
+
+```
+Also so varible are important as 'level' so some variable have an impact on the change on enrollment , we take those in to the regression.
+```{r}
+#Levels Regression
+columns_to_use_levels <- c("ACT_2012", "Tuition_2012","Black_Undergrads_2012", "Asian_Undergrads_2012", "Other_NonWhite_Undergrads_2012", "Change_in_Republican_Votes_2020", "County_PerCapita_Income_2012", "County_Employment_2012")
+
+fit_single_levels <- lm(Change_in_Undergrads_2021 ~ ., data = final_data_modified[, c("Change_in_Undergrads_2021", columns_to_use_levels)])
+cat("Regression Results with 2012-2012 as dependent and 2012 as independent:\n")
+print(summary(fit_single_levels))
+```
+
+
+```{r}
+#Barusch Pagan
+bptest(fit_single3)
+library(lmtest)
+library(sandwich)
+coeftest(fit_single3, vcov = vcovHC(fit_single3, type="HC1"))
+
+```
+
+### inspection top repuliabican vote school
+
+as we want to understand does the graph make so we print some of the top value to inspect.
+```{r, include=FALSE}
+# Schools with largest 'vote_to_republican_diff.2020
+top50 <- top_n(final_data_modified, 50, final_data_modified$Change_in_Republican_Votes_2020)
+topUNITIDs <- unique(top50$`UNITID_County`)
+topINSTM <- as.data.frame(topUNITIDs)
+topINSTM$Institution <- final_data_modified$Institution[match(topINSTM$topUNITIDs,final_data_modified$UNITID_County)]
+topINSTM$'County Code' <- selected_data$COUNTY[match(topINSTM$topUNITIDs, selected_data$UNITIDCOUNTY)]
+topINSTM$'County Name' <-filtered_data$county_name[match(topINSTM$County, filtered_data$COUNTY)]
+topINSTM$State <- final_data_modified$State[match(topINSTM$topUNITIDs,final_data_modified$UNITID_County)]
+print(topINSTM)
+topINSTM <- subset(topINSTM, select=-topUNITIDs)
+```
+
+
+```{r}
+#UNITIDs with largest 'vote_to_republican_diff.2020
+library(kableExtra)
+
+topINSTM %>%
+  kbl (caption="Top Universities by County's Change in Republican Votes") %>%
+  kable_minimal(full_width = F, position="left")
+```
+
+\newpage
+```{r, echo=FALSE, warning=FALSE} 
+#Summary Tables
+library(jtools)
+library(kableExtra)
+
+
+library(huxtable)
+#export_summs(fit_single3, fit_single_levels, digits=10, model.names = c("Model 1", "Levels Model"), robust="HC1")
+summ(fit_single3, digits=10, robust = "HC1")
+summ(fit_single_levels, digits=10, robust = "HC1")
+
+plot(final_data_modified$Change_in_Republican_Votes_2020,final_data_modified$Change_in_Undergrads_2021, pch=1, xlab = "Change in Share of Republican Votes (2012-2020)", ylab="Change in Undergrad Enrollment (2012-2021)", main="Regression Scatterplot")+abline(lm(final_data_modified$Change_in_Undergrads_2021~final_data_modified$Change_in_Republican_Votes_2020))
+
+library(broom) 
+#res <- resid(fit_single3)
+#plot(fitted(fit_single3),res)+abline(0,0)
+fitted_data <- augment(fit_single3, data=final_data_modified)
+library(tidyverse)
+
+ggplot(fitted_data, aes(x = .fitted, y = .resid)) + 
+  geom_point() +
+  geom_smooth(method = "lm")
+```
+### adding urban data and combine all as regression
+
+```{r}
+#regressions by urban vs rural
+#urban is defined by if county population is >75% in urban area
+
+#add urban/rural
+urban <- read.csv("/Users/ericaconnell/Documents/NYU/Special Project/final model/urban.csv")
+
+final_data_modified$Urban <- urban$POPPCT_URB[match(final_data_modified$UNITID_County,urban$UNITID_County)]
+
+urban_data <- final_data_modified[which(final_data_modified$Urban>.75),]
+rural_data <- final_data_modified[which(final_data_modified$Urban<=.75),]
+
+population_columns <- c("Change_in_ACT_2020", "Tuition_2012","Change_in_Black_Undergrads_2020", "Change_in_Asian_Undergrads_2020", "Change_in_Other_NonWhite_Undergrads_2020", "Change_in_Republican_Votes_2020", "County_PerCapita_Income_2012", "Change_in_County_Employment_2020")
+
+fit_single_urban <- lm(Change_in_Undergrads_2021 ~ ., data = urban_data[, c("Change_in_Undergrads_2021", population_columns)])
+print(summary(fit_single_urban))
+
+fit_single_rural <- lm(Change_in_Undergrads_2021 ~ ., data = rural_data[, c("Change_in_Undergrads_2021", population_columns)])
+print(summary(fit_single_rural))
+
+
+summ(fit_single_urban, digits=10, robust = "HC1")
+summ(fit_single_rural, digits=10, robust = "HC1")
+
+
+
+```
+
+
+
+
+
+
